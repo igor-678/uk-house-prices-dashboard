@@ -76,6 +76,39 @@ st.line_chart(
 
 
 
+current_price = prices["AveragePrice"].iloc[-1]
+first_price = prices["AveragePrice"].iloc[0]
+highest_price = prices["AveragePrice"].max()
+
+growth_percent = (
+    (current_price - first_price) / first_price) * 100
+
+
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric(
+    "first price",
+    f"£{first_price:,.0f}",
+)
+
+col2.metric(
+    "current price",
+    f"£{current_price:,.0f}",
+)
+
+col3.metric(
+    "highest price",
+    f"£{highest_price:,.0f}",
+)
+
+col4.metric(
+    "Growth Since Start",
+    f"{growth_percent:.1f}%",
+)
+
+
+
 st.write("Interactive Dashboard for exploring UK House Prices by region.")
 
 
