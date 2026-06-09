@@ -1,8 +1,11 @@
+from turtledemo.penrose import start
+
 import streamlit as st
 import sqlite3
 import pandas as pd
 from pathlib import Path
 
+from numpy.ma.extras import average
 
 st.set_page_config(
     page_title="UK House Prices",
@@ -71,6 +74,20 @@ prices = get_region_prices(selected_region)
 
 prices["Date"] = pd.to_datetime(prices["Date"])
 
+
+
+years = sorted(prices["Date"].dt.year.unique())
+
+start_year = st.selectbox(
+    "Start Year",
+    years,
+    index=0
+)
+
+prices = prices[prices["Date"].dt.year >= start_year]
+
+
+
 st.line_chart(
     prices.set_index("Date") ["AveragePrice"])
 
@@ -84,8 +101,22 @@ growth_percent = (
     (current_price - first_price) / first_price) * 100
 
 
+if len(prices) >= 13:
+    price_12_months_ago = prices["AveragePrice"].iloc[-13]
 
-col1, col2, col3, col4 = st.columns(4)
+    last_year_growth_percent = (
+            (current_price - price_12_months_ago)
+            / price_12_months_ago
+    ) * 100
+else:
+    last_year_growth_percent = None
+
+
+average_prices = prices["AveragePrice"].mean()
+
+
+
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 col1.metric(
     "first price",
@@ -107,6 +138,21 @@ col4.metric(
     f"{growth_percent:.1f}%",
 )
 
+if last_year_growth_percent is not None:
+    col5.metric(
+        "last year growth",
+        f"{last_year_growth_percent:.1f}%",
+    )
+else:
+    col5.metric(
+        "Last 12 Months",
+        "Not enough data"
+    )
+
+col6.metric(
+    "Average price",
+    f"£{average_prices:,.0f}",
+)
 
 
 st.write("Interactive Dashboard for exploring UK House Prices by region.")
