@@ -1,3 +1,5 @@
+from zoneinfo import available_timezones
+
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -85,15 +87,41 @@ comparison_prices["Date"] = pd.to_datetime(
 
 years = sorted(prices["Date"].dt.year.unique())
 
-start_year = st.selectbox(
-    "Start Year",
-    years,
-    index=0
-)
+year_col1, year_col2 = st.columns(2)
 
+with year_col1:
+      start_year = st.selectbox(
+        "Start Year",
+        years,
+        index= 0
+    )
+
+available_end_years = [
+    year for year in years
+    if year >= start_year
+]
+
+with year_col2:
+    end_year = st.selectbox(
+        "End Year",
+        available_end_years,
+        index=len(available_end_years) -1
+    )
+
+
+if start_year > end_year:
+    st.error("Start Year must be smaller than End Year.")
+    st.stop()
+
+
+prices = prices[
+    (prices["Date"].dt.year >= start_year)
+    & (prices["Date"].dt.year <= end_year)
+]
 
 comparison_prices = comparison_prices[
-    comparison_prices["Date"].dt.year >= start_year
+    (comparison_prices["Date"].dt.year >= start_year)
+    & (comparison_prices["Date"].dt.year <= end_year)
 ]
 
 
