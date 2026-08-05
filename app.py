@@ -1,11 +1,8 @@
-from turtledemo.penrose import start
-
 import streamlit as st
 import sqlite3
 import pandas as pd
 from pathlib import Path
 
-from numpy.ma.extras import average
 
 st.set_page_config(
     page_title="UK House Prices",
@@ -14,13 +11,10 @@ st.set_page_config(
 
 
 BASE_DIR = Path(__file__).resolve().parent
-
 db_file = BASE_DIR / "data" / "house_prices.db"
 
 
-
 def get_regions():
-
     conn = sqlite3.connect(db_file)
 
     query = """
@@ -32,12 +26,11 @@ def get_regions():
     regions = pd.read_sql_query(query, conn)
 
     conn.close()
+
     return regions["RegionName"].tolist()
 
 
-
 def get_region_prices(region_name):
-
     conn = sqlite3.connect(db_file)
 
     query = """
@@ -52,28 +45,42 @@ def get_region_prices(region_name):
     prices = pd.read_sql_query(
         query,
         conn,
-    params=(region_name, )
+        params=(region_name,)
     )
 
     conn.close()
-    return prices
 
+    return prices
 
 
 st.title("UK House Prices Dashboard")
 
 regions = get_regions()
 
-selected_region = st.selectbox(
-    "Select Region",
-        regions
-)
 
+region_col1, region_col2 = st.columns(2)
+
+with region_col1:
+    selected_region = st.selectbox(
+        "Select First Region",
+        regions,
+        index= regions.index("London")
+    )
+
+with region_col2:
+    comparison_region = st.selectbox(
+        "Select Second Region",
+        regions,
+        index= 1
+    )
 
 prices = get_region_prices(selected_region)
-
 prices["Date"] = pd.to_datetime(prices["Date"])
 
+comparison_prices = get_region_prices(comparison_region)
+comparison_prices["Date"] = pd.to_datetime(
+    comparison_prices["Date"]
+)
 
 
 years = sorted(prices["Date"].dt.year.unique())
@@ -84,64 +91,87 @@ start_year = st.selectbox(
     index=0
 )
 
-prices = prices[prices["Date"].dt.year >= start_year]
+
+comparison_prices = comparison_prices[
+    comparison_prices["Date"].dt.year >= start_year
+]
 
 
+first_region_data = prices[
+    ["Date", "AveragePrice"]
+].copy()
+
+first_region_data = first_region_data.rename(
+    columns={"AveragePrice": selected_region}
+)
+
+
+second_region_data = comparison_prices[
+    ["Date", "AveragePrice"]
+].copy()
+
+second_region_data = second_region_data.rename(
+    columns={"AveragePrice": comparison_region}
+)
+
+
+chart_data = first_region_data.merge(
+    second_region_data,
+    on="Date",
+    how="inner"
+)
 
 st.line_chart(
-    prices.set_index("Date") ["AveragePrice"])
-
+    chart_data.set_index("Date")
+)
 
 
 current_price = prices["AveragePrice"].iloc[-1]
 first_price = prices["AveragePrice"].iloc[0]
 highest_price = prices["AveragePrice"].max()
+average_price = prices["AveragePrice"].mean()
 
 growth_percent = (
-    (current_price - first_price) / first_price) * 100
-
+    (current_price - first_price)
+    / first_price
+) * 100
 
 if len(prices) >= 13:
     price_12_months_ago = prices["AveragePrice"].iloc[-13]
 
     last_year_growth_percent = (
-            (current_price - price_12_months_ago)
-            / price_12_months_ago
+        (current_price - price_12_months_ago)
+        / price_12_months_ago
     ) * 100
 else:
     last_year_growth_percent = None
 
-
-average_prices = prices["AveragePrice"].mean()
-
-
-
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 col1.metric(
-    "first price",
-    f"£{first_price:,.0f}",
+    "First Price",
+    f"£{first_price:,.0f}"
 )
 
 col2.metric(
-    "current price",
-    f"£{current_price:,.0f}",
+    "Current Price",
+    f"£{current_price:,.0f}"
 )
 
 col3.metric(
-    "highest price",
-    f"£{highest_price:,.0f}",
+    "Highest Price",
+    f"£{highest_price:,.0f}"
 )
 
 col4.metric(
     "Growth Since Start",
-    f"{growth_percent:.1f}%",
+    f"{growth_percent:.1f}%"
 )
 
 if last_year_growth_percent is not None:
     col5.metric(
-        "last year growth",
-        f"{last_year_growth_percent:.1f}%",
+        "Last 12 Months",
+        f"{last_year_growth_percent:.1f}%"
     )
 else:
     col5.metric(
@@ -150,13 +180,12 @@ else:
     )
 
 col6.metric(
-    "Average price",
-    f"£{average_prices:,.0f}",
+    "Average Price",
+    f"£{average_price:,.0f}"
 )
 
-
-st.write("Interactive Dashboard for exploring UK House Prices by region.")
-
-
+st.write(
+    "Interactive dashboard for exploring UK house prices by region."
+)
 
 
