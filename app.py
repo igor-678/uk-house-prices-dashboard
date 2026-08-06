@@ -5,6 +5,7 @@ import sqlite3
 import pandas as pd
 from pathlib import Path
 
+from streamlit import query_params, columns
 
 st.set_page_config(
     page_title="UK House Prices",
@@ -53,6 +54,36 @@ def get_region_prices(region_name):
     conn.close()
 
     return prices
+
+def get_top_expensive_regions(end_year):
+    conn = sqlite3.connect(db_file)
+
+    query = """
+            SELECT
+                RegionName,
+                AveragePrice,
+                Date
+            FROM house_prices
+            WHERE strftime('%Y', Date) = ?
+            AND Date = (
+                SELECT MAX(hp2.Date)
+                FROM house_prices AS hp2
+                WHERE hp2.RegionName = house_prices.RegionName
+                AND strftime('%Y', hp2.Date) = ?
+            )
+            ORDER BY AveragePrice DESC
+            LIMIT 10
+        """
+
+    top_regions = pd.read_sql_query(
+        query,
+        conn,
+        params=(str(end_year),str(end_year))
+    )
+
+    conn.close()
+
+    return top_regions
 
 
 st.title("UK House Prices Dashboard")
@@ -211,6 +242,33 @@ col6.metric(
     "Average Price",
     f"£{average_price:,.0f}"
 )
+
+
+top_regions = get_top_expensive_regions(end_year)
+
+top_regions = top_regions.copy()
+
+top_regions["AveragePrice"] = top_regions["AveragePrice"].map(
+    lambda price: f"£{price:,.0f}"
+)
+
+top_regions = top_regions.rename(
+    columns={
+        "RegionName": "Region",
+        "AveragePrice": "AveragePrice",
+        "Date": "Date"
+    }
+)
+
+st.subheader(f"Top 10 Most Expensive Regions in {end_year}")
+
+st.dataframe(
+    top_regions,
+    hide_index=True,
+    use_container_width=True
+)
+
+
 
 st.write(
     "Interactive dashboard for exploring UK house prices by region."
