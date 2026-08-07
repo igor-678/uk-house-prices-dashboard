@@ -58,27 +58,37 @@ def get_region_prices(region_name):
 def get_top_expensive_regions(end_year):
     conn = sqlite3.connect(db_file)
 
+    start_date = f"{end_year}-01-01"
+    next_year_date = f"{end_year + 1}-01-01"
+
     query = """
-            SELECT
-                RegionName,
-                AveragePrice,
-                Date
-            FROM house_prices
-            WHERE strftime('%Y', Date) = ?
-            AND Date = (
-                SELECT MAX(hp2.Date)
-                FROM house_prices AS hp2
-                WHERE hp2.RegionName = house_prices.RegionName
-                AND strftime('%Y', hp2.Date) = ?
-            )
-            ORDER BY AveragePrice DESC
-            LIMIT 10
-        """
+           WITH ranked_prices AS (
+               SELECT
+                   RegionName,
+                   AveragePrice,
+                   Date,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY RegionName
+                       ORDER BY Date DESC
+                   ) AS row_number
+               FROM house_prices
+               WHERE Date >= ?
+                 AND Date < ?
+           )
+           SELECT
+               RegionName,
+               AveragePrice,
+               Date
+           FROM ranked_prices
+           WHERE row_number = 1
+           ORDER BY AveragePrice DESC
+           LIMIT 10
+       """
 
     top_regions = pd.read_sql_query(
         query,
         conn,
-        params=(str(end_year),str(end_year))
+        params=(start_date, next_year_date)
     )
 
     conn.close()
@@ -246,24 +256,31 @@ col6.metric(
 
 top_regions = get_top_expensive_regions(end_year)
 
-top_regions = top_regions.copy()
+top_regions_chart = top_regions.copy()
+top_regions_table = top_regions.copy()
 
-top_regions["AveragePrice"] = top_regions["AveragePrice"].map(
+top_regions_table["AveragePrice"] = top_regions_table[
+    "AveragePrice"
+].map(
     lambda price: f"£{price:,.0f}"
 )
 
-top_regions = top_regions.rename(
+top_regions_table = top_regions_table.rename(
     columns={
         "RegionName": "Region",
         "AveragePrice": "AveragePrice",
-        "Date": "Date"
     }
 )
 
 st.subheader(f"Top 10 Most Expensive Regions in {end_year}")
 
+st.bar_chart(
+    top_regions_chart.set_index("RegionName")["AveragePrice"]
+)
+
+
 st.dataframe(
-    top_regions,
+    top_regions_table,
     hide_index=True,
     use_container_width=True
 )

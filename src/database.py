@@ -20,6 +20,14 @@ df.to_sql('house_prices',
           index=False
 )
 
+
+conn.execute("""
+    CREATE INDEX IF NOT EXISTS idx_house_prices_region_date
+    ON house_prices (RegionName, Date)
+""")
+
+conn.commit()
+
 conn.close()
 
 print('Database created')
