@@ -96,6 +96,62 @@ def get_top_expensive_regions(end_year):
     return top_regions
 
 
+def get_top_growth_regions(start_year, end_year):
+    conn = sqlite3.connect(db_file)
+    query = """
+        SELECT
+            RegionName,
+            Date,
+            AveragePrice
+        FROM house_prices
+        WHERE strftime('%Y', Date) IN (?, ?)
+        ORDER BY RegionName, Date
+    """
+
+    data = pd.read_sql_query(
+        query,
+        conn,
+        params=(str(start_year), str(end_year))
+    )
+
+    conn.close()
+
+    data["Date"] = pd.to_datetime(data["Date"])
+
+    start_prices = data[
+        data["Date"].dt.year == start_year
+    ].groupby("RegionName").first()
+
+
+    end_prices = data[
+        data["Date"].dt.year == end_year
+    ].groupby("RegionName").last()
+
+    growth_data = start_prices[
+        ["AveragePrice"]
+    ].join(
+        end_prices[["AveragePrice"]],
+        lsuffix="_Start",
+        rsuffix="_End"
+    )
+
+    growth_data["GrowthPercent"] = (
+        (
+            growth_data["AveragePrice_End"]
+            - growth_data["AveragePrice_Start"]
+        )
+        / growth_data["AveragePrice_Start"]
+    ) * 100
+
+    growth_data = growth_data.sort_values(
+        "GrowthPercent",
+        ascending=False
+    ).head(10)
+
+    return growth_data
+
+
+
 st.title("UK House Prices Dashboard")
 
 regions = get_regions()
@@ -272,6 +328,7 @@ top_regions_table = top_regions_table.rename(
     }
 )
 
+
 st.subheader(f"Top 10 Most Expensive Regions in {end_year}")
 
 st.bar_chart(
@@ -282,6 +339,21 @@ st.bar_chart(
 st.dataframe(
     top_regions_table,
     hide_index=True,
+    use_container_width=True
+)
+
+
+top_growth_regions = get_top_growth_regions(
+    start_year,
+    end_year
+)
+
+st.subheader(
+    f"Top 10 Fastest Growing Regions from {start_year} to {end_year}"
+)
+
+st.dataframe(
+    top_growth_regions,
     use_container_width=True
 )
 
