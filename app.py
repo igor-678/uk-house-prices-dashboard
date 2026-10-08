@@ -17,16 +17,17 @@ BASE_DIR = Path(__file__).resolve().parent
 db_file = BASE_DIR / "data" / "house_prices.db"
 
 
-def get_regions():
+def get_regions(level):
     conn = sqlite3.connect(db_file)
 
     query = """
         SELECT DISTINCT RegionName
         FROM house_prices
+        WHERE GeographyLevel = ?
         ORDER BY RegionName
     """
 
-    regions = pd.read_sql_query(query, conn)
+    regions = pd.read_sql_query(query, conn, params=(level,))
 
     conn.close()
 
@@ -55,7 +56,7 @@ def get_region_prices(region_name):
 
     return prices
 
-def get_top_expensive_regions(end_year):
+def get_top_expensive_regions(end_year, level):
     conn = sqlite3.connect(db_file)
 
     start_date = f"{end_year}-01-01"
@@ -74,6 +75,7 @@ def get_top_expensive_regions(end_year):
                FROM house_prices
                WHERE Date >= ?
                  AND Date < ?
+                 AND GeographyLevel = ?
            )
            SELECT
                RegionName,
@@ -88,7 +90,7 @@ def get_top_expensive_regions(end_year):
     top_regions = pd.read_sql_query(
         query,
         conn,
-        params=(start_date, next_year_date)
+        params=(start_date, next_year_date, level)
     )
 
     conn.close()
@@ -96,7 +98,7 @@ def get_top_expensive_regions(end_year):
     return top_regions
 
 
-def get_top_growth_regions(start_year, end_year):
+def get_top_growth_regions(start_year, end_year, level):
     conn = sqlite3.connect(db_file)
     query = """
         SELECT
@@ -105,13 +107,14 @@ def get_top_growth_regions(start_year, end_year):
             AveragePrice
         FROM house_prices
         WHERE strftime('%Y', Date) IN (?, ?)
+          AND GeographyLevel = ?
         ORDER BY RegionName, Date
     """
 
     data = pd.read_sql_query(
         query,
         conn,
-        params=(str(start_year), str(end_year))
+        params=(str(start_year), str(end_year), level)
     )
 
     conn.close()
@@ -154,21 +157,37 @@ def get_top_growth_regions(start_year, end_year):
 
 st.title("UK House Prices Dashboard")
 
-regions = get_regions()
+level_labels = {
+    "Region": ("Region", "Regions"),
+    "Country": ("Country", "Countries"),
+    "LocalAuthority": ("Local Authority", "Local Authorities"),
+}
+
+selected_level = st.selectbox(
+    "Geography level",
+    list(level_labels.keys()),
+    format_func=lambda level: level_labels[level][0]
+)
+
+level_singular, level_plural = level_labels[selected_level]
+
+regions = get_regions(selected_level)
+
+default_index = regions.index("London") if "London" in regions else 0
 
 
 region_col1, region_col2 = st.columns(2)
 
 with region_col1:
     selected_region = st.selectbox(
-        "Select First Region",
+        f"Select First {level_singular}",
         regions,
-        index= regions.index("London")
+        index=default_index
     )
 
 with region_col2:
     comparison_region = st.selectbox(
-        "Select Second Region",
+        f"Select Second {level_singular}",
         regions,
         index= 1
     )
@@ -310,7 +329,7 @@ col6.metric(
 )
 
 
-top_regions = get_top_expensive_regions(end_year)
+top_regions = get_top_expensive_regions(end_year, selected_level)
 
 top_regions_chart = top_regions.copy()
 top_regions_table = top_regions.copy()
@@ -329,7 +348,7 @@ top_regions_table = top_regions_table.rename(
 )
 
 
-st.subheader(f"Top 10 Most Expensive Regions in {end_year}")
+st.subheader(f"Most Expensive {level_plural} in {end_year}")
 
 st.bar_chart(
     top_regions_chart.set_index("RegionName")["AveragePrice"]
@@ -345,11 +364,12 @@ st.dataframe(
 
 top_growth_regions = get_top_growth_regions(
     start_year,
-    end_year
+    end_year,
+    selected_level
 )
 
 st.subheader(
-    f"Top 10 Fastest Growing Regions from {start_year} to {end_year}"
+    f"Fastest Growing {level_plural} from {start_year} to {end_year}"
 )
 
 st.dataframe(
@@ -362,5 +382,4 @@ st.dataframe(
 st.write(
     "Interactive dashboard for exploring UK house prices by region."
 )
-
 
