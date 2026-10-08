@@ -1,11 +1,8 @@
-from zoneinfo import available_timezones
-
 import streamlit as st
 import sqlite3
 import pandas as pd
+import plotly.express as px
 from pathlib import Path
-
-from streamlit import query_params, columns
 
 st.set_page_config(
     page_title="UK House Prices",
@@ -155,6 +152,48 @@ def get_top_growth_regions(start_year, end_year, level):
 
 
 
+def make_ranking_chart(data, value_column, label_column,
+                       axis_title, tick_prefix="", tick_suffix="",
+                       decimals=0):
+    """Horizontal bar chart for a 'top 10' style ranking.
+
+    Horizontal bars are used because area names like
+    "Kensington and Chelsea" are long and would be cut off or
+    rotated on a vertical chart. The data is already sorted from
+    highest to lowest, so we reverse the y axis to put the highest
+    bar at the top.
+    """
+    fig = px.bar(
+        data,
+        x=value_column,
+        y=label_column,
+        orientation="h"
+    )
+
+    fig.update_yaxes(autorange="reversed", title=None)
+
+    fig.update_xaxes(
+        title=axis_title,
+        tickprefix=tick_prefix,
+        ticksuffix=tick_suffix
+    )
+
+    # What the user sees when hovering over a bar
+    fig.update_traces(
+        hovertemplate=(
+            f"%{{y}}<br>{tick_prefix}%{{x:,.{decimals}f}}{tick_suffix}"
+            "<extra></extra>"
+        )
+    )
+
+    fig.update_layout(
+        height=400,
+        margin=dict(l=0, r=0, t=10, b=0)
+    )
+
+    return fig
+
+
 st.title("UK House Prices Dashboard")
 
 level_labels = {
@@ -244,30 +283,48 @@ comparison_prices = comparison_prices[
 first_region_data = prices[
     ["Date", "AveragePrice"]
 ].copy()
-
-first_region_data = first_region_data.rename(
-    columns={"AveragePrice": selected_region}
-)
-
+first_region_data["Area"] = selected_region
 
 second_region_data = comparison_prices[
     ["Date", "AveragePrice"]
 ].copy()
+second_region_data["Area"] = comparison_region
 
-second_region_data = second_region_data.rename(
-    columns={"AveragePrice": comparison_region}
+# "Long" format: one row per area per date, with an Area column that
+# Plotly uses to draw one line per area and colour them.
+if selected_region == comparison_region:
+    st.info(
+        f"Both selections are {selected_region}. "
+        "Pick a different second area to compare."
+    )
+    chart_data = first_region_data
+else:
+    chart_data = pd.concat(
+        [first_region_data, second_region_data],
+        ignore_index=True
+    )
+
+price_fig = px.line(
+    chart_data,
+    x="Date",
+    y="AveragePrice",
+    color="Area"
 )
 
+price_fig.update_traces(hovertemplate="£%{y:,.0f}")
 
-chart_data = first_region_data.merge(
-    second_region_data,
-    on="Date",
-    how="inner"
+price_fig.update_layout(
+    hovermode="x unified",
+    xaxis_title=None,
+    yaxis_title="Average price",
+    yaxis_tickprefix="£",
+    yaxis_tickformat=",.0f",
+    legend_title_text="",
+    legend=dict(orientation="h", y=1.1, x=0),
+    margin=dict(l=0, r=0, t=10, b=0)
 )
 
-st.line_chart(
-    chart_data.set_index("Date")
-)
+st.plotly_chart(price_fig)
 
 
 current_price = prices["AveragePrice"].iloc[-1]
@@ -289,6 +346,8 @@ if len(prices) >= 13:
     ) * 100
 else:
     last_year_growth_percent = None
+
+st.subheader(f"{selected_region}: {start_year} to {end_year}")
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 
@@ -331,7 +390,6 @@ col6.metric(
 
 top_regions = get_top_expensive_regions(end_year, selected_level)
 
-top_regions_chart = top_regions.copy()
 top_regions_table = top_regions.copy()
 
 top_regions_table["AveragePrice"] = top_regions_table[
@@ -342,23 +400,29 @@ top_regions_table["AveragePrice"] = top_regions_table[
 
 top_regions_table = top_regions_table.rename(
     columns={
-        "RegionName": "Region",
-        "AveragePrice": "AveragePrice",
+        "RegionName": level_singular,
+        "AveragePrice": "Average Price",
     }
 )
 
 
 st.subheader(f"Most Expensive {level_plural} in {end_year}")
 
-st.bar_chart(
-    top_regions_chart.set_index("RegionName")["AveragePrice"]
+st.plotly_chart(
+    make_ranking_chart(
+        top_regions,
+        value_column="AveragePrice",
+        label_column="RegionName",
+        axis_title="Average price",
+        tick_prefix="£"
+    )
 )
 
 
 st.dataframe(
     top_regions_table,
     hide_index=True,
-    use_container_width=True
+    width="stretch"
 )
 
 
@@ -368,13 +432,47 @@ top_growth_regions = get_top_growth_regions(
     selected_level
 )
 
+# The region names are the table's index, so reset_index() turns them
+# back into a normal column that charts and tables can use.
+growth_table = top_growth_regions.reset_index().rename(
+    columns={
+        "RegionName": level_singular,
+        "AveragePrice_Start": f"Price {start_year}",
+        "AveragePrice_End": f"Price {end_year}",
+        "GrowthPercent": "Growth (%)",
+    }
+)
+
 st.subheader(
     f"Fastest Growing {level_plural} from {start_year} to {end_year}"
 )
 
+st.plotly_chart(
+    make_ranking_chart(
+        growth_table,
+        value_column="Growth (%)",
+        label_column=level_singular,
+        axis_title="Price growth (before inflation)",
+        tick_suffix="%",
+        decimals=1
+    )
+)
+
 st.dataframe(
-    top_growth_regions,
-    use_container_width=True
+    growth_table,
+    hide_index=True,
+    width="stretch",
+    column_config={
+        f"Price {start_year}": st.column_config.NumberColumn(
+            format="£%.0f"
+        ),
+        f"Price {end_year}": st.column_config.NumberColumn(
+            format="£%.0f"
+        ),
+        "Growth (%)": st.column_config.NumberColumn(
+            format="%.1f"
+        ),
+    }
 )
 
 
@@ -382,4 +480,3 @@ st.dataframe(
 st.write(
     "Interactive dashboard for exploring UK house prices by region."
 )
-
